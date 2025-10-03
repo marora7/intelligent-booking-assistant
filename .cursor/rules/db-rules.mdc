@@ -1,0 +1,362 @@
+---
+description: SQLite database rules and best practices for local development
+alwaysApply: true
+---
+
+# SQLite Database Rules
+
+Best practices for working with SQLite in the Node.js booking system.
+
+## Database Connection
+
+1. **Use a single connection instance:**
+   ```typescript
+   // Good - Single shared connection
+   import Database from 'better-sqlite3';
+   const db = new Database('./data/database.db');
+   db.pragma('journal_mode = WAL'); // Write-Ahead Logging for better concurrency
+   
+   export default db;
+   ```
+
+   ```typescript
+   // Bad - Multiple connections
+   const db1 = new Database('./data/database.db');
+   const db2 = new Database('./data/database.db');
+   ```
+
+2. **Enable foreign keys:**
+   ```typescript
+   db.pragma('foreign_keys = ON');
+   ```
+
+3. **Set appropriate pragmas for performance:**
+   ```typescript
+   db.pragma('journal_mode = WAL');
+   db.pragma('synchronous = NORMAL');
+   db.pragma('cache_size = -64000'); // 64MB cache
+   db.pragma('temp_store = MEMORY');
+   ```
+
+## Schema Management
+
+1. **Use migrations for schema changes:**
+   ```typescript
+   // migrations/001_initial_schema.sql
+   CREATE TABLE IF NOT EXISTS conversations (
+     id TEXT PRIMARY KEY,
+     session_id TEXT UNIQUE NOT NULL,
+     created_at INTEGER DEFAULT (strftime('%s', 'now')),
+     updated_at INTEGER DEFAULT (strftime('%s', 'now')),
+     current_section INTEGER DEFAULT 1,
+     profile TEXT, -- JSON string
+     status TEXT DEFAULT 'active'
+   );
+   ```
+
+2. **Always use `IF NOT EXISTS` for table creation:**
+   ```typescript
+   // Good
+   db.exec(`CREATE TABLE IF NOT EXISTS users (...)`);
+   
+   // Bad
+   db.exec(`CREATE TABLE users (...)`); // Fails if table exists
+   ```
+
+3. **Store JSON as TEXT, not as separate tables when appropriate:**
+   ```typescript
+   // Good for flexible data
+   profile TEXT -- Store as JSON.stringify()
+   
+   // Retrieve
+   const profile = JSON.parse(row.profile);
+   ```
+
+## Query Patterns
+
+1. **Use prepared statements to prevent SQL injection:**
+   ```typescript
+   // Good - Parameterized query
+   const stmt = db.prepare('SELECT * FROM destinations WHERE budget_tier = ?');
+   const results = stmt.all('moderate');
+   
+   // Bad - String concatenation
+   const results = db.prepare(`SELECT * FROM destinations WHERE budget_tier = '${tier}'`).all();
+   ```
+
+2. **Use transactions for multiple related operations:**
+   ```typescript
+   // Good - Atomic operation
+   const insertBooking = db.transaction((booking, details) => {
+     db.prepare('INSERT INTO bookings (...) VALUES (...)').run(booking);
+     db.prepare('INSERT INTO booking_details (...) VALUES (...)').run(details);
+   });
+   
+   insertBooking(bookingData, detailsData);
+   ```
+
+3. **Use appropriate query methods:**
+   ```typescript
+   // .get() - Returns first row or undefined
+   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+   
+   // .all() - Returns array of all rows
+   const users = db.prepare('SELECT * FROM users').all();
+   
+   // .run() - For INSERT, UPDATE, DELETE
+   const info = db.prepare('INSERT INTO users (...) VALUES (...)').run(data);
+   console.log(info.changes, info.lastInsertRowid);
+   ```
+
+## Data Types
+
+1. **SQLite has 5 storage classes:**
+   - `NULL` - null value
+   - `INTEGER` - signed integer (1-8 bytes)
+   - `REAL` - floating point (8 bytes)
+   - `TEXT` - UTF-8 string
+   - `BLOB` - binary data
+
+2. **Use appropriate types:**
+   ```sql
+   -- Good
+   CREATE TABLE bookings (
+     id TEXT PRIMARY KEY,                    -- UUIDs as TEXT
+     created_at INTEGER,                      -- Unix timestamp
+     price REAL,                              -- Decimal values
+     is_confirmed INTEGER DEFAULT 0,          -- Boolean (0 or 1)
+     details TEXT                             -- JSON data
+   );
+   ```
+
+3. **Store dates as Unix timestamps or ISO 8601 strings:**
+   ```typescript
+   // Option 1: Unix timestamp (INTEGER)
+   created_at: Math.floor(Date.now() / 1000)
+   
+   // Option 2: ISO 8601 (TEXT)
+   created_at: new Date().toISOString()
+   ```
+
+## Error Handling
+
+1. **Wrap database operations in try-catch:**
+   ```typescript
+   try {
+     const result = db.prepare('INSERT INTO users (...) VALUES (...)').run(data);
+     return { success: true, id: result.lastInsertRowid };
+   } catch (error) {
+     if (error.code === 'SQLITE_CONSTRAINT') {
+       return { success: false, error: 'Duplicate entry' };
+     }
+     throw error;
+   }
+   ```
+
+2. **Handle common SQLite errors:**
+   - `SQLITE_CONSTRAINT` - Constraint violation (unique, foreign key, etc.)
+   - `SQLITE_BUSY` - Database is locked
+   - `SQLITE_READONLY` - Attempt to write to read-only database
+
+## Indexes
+
+1. **Create indexes for frequently queried columns:**
+   ```sql
+   CREATE INDEX IF NOT EXISTS idx_conversations_session 
+     ON conversations(session_id);
+   
+   CREATE INDEX IF NOT EXISTS idx_bookings_status 
+     ON bookings(status);
+   
+   CREATE INDEX IF NOT EXISTS idx_destinations_budget 
+     ON destinations(budget_tier);
+   ```
+
+2. **Use composite indexes for multi-column queries:**
+   ```sql
+   -- For queries like: WHERE status = ? AND created_at > ?
+   CREATE INDEX IF NOT EXISTS idx_bookings_status_date 
+     ON bookings(status, created_at);
+   ```
+
+## Data Integrity
+
+1. **Use foreign key constraints:**
+   ```sql
+   CREATE TABLE messages (
+     id TEXT PRIMARY KEY,
+     conversation_id TEXT NOT NULL,
+     content TEXT NOT NULL,
+     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+   );
+   ```
+
+2. **Use CHECK constraints for validation:**
+   ```sql
+   CREATE TABLE bookings (
+     id TEXT PRIMARY KEY,
+     num_travelers INTEGER CHECK(num_travelers > 0 AND num_travelers <= 20),
+     status TEXT CHECK(status IN ('pending', 'confirmed', 'cancelled'))
+   );
+   ```
+
+## Performance Tips
+
+1. **Use EXPLAIN QUERY PLAN to analyze queries:**
+   ```typescript
+   const plan = db.prepare('EXPLAIN QUERY PLAN SELECT * FROM destinations WHERE budget_tier = ?').all('luxury');
+   console.log(plan);
+   ```
+
+2. **Batch inserts with transactions:**
+   ```typescript
+   // Good - Fast batch insert
+   const insertMany = db.transaction((items) => {
+     const stmt = db.prepare('INSERT INTO items VALUES (?, ?)');
+     for (const item of items) {
+       stmt.run(item.id, item.name);
+     }
+   });
+   
+   insertMany(largeArray);
+   ```
+
+3. **Use LIMIT for pagination:**
+   ```typescript
+   const page = 1;
+   const pageSize = 20;
+   const offset = (page - 1) * pageSize;
+   
+   const results = db.prepare('SELECT * FROM destinations LIMIT ? OFFSET ?')
+     .all(pageSize, offset);
+   ```
+
+## Database File Management
+
+1. **Location:** Store database in `/data` directory
+   ```
+   data/
+   ├── database.db
+   ├── database.db-shm  (shared memory, auto-generated)
+   └── database.db-wal  (write-ahead log, auto-generated)
+   ```
+
+2. **Backup before migrations:**
+   ```typescript
+   import { copyFileSync } from 'fs';
+   
+   const backupPath = `./data/database.backup.${Date.now()}.db`;
+   copyFileSync('./data/database.db', backupPath);
+   ```
+
+3. **Close connection gracefully:**
+   ```typescript
+   process.on('exit', () => db.close());
+   process.on('SIGINT', () => {
+     db.close();
+     process.exit(0);
+   });
+   ```
+
+## Common Patterns
+
+1. **Upsert (INSERT OR REPLACE):**
+   ```typescript
+   db.prepare(`
+     INSERT INTO conversations (id, session_id, profile)
+     VALUES (?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       profile = excluded.profile,
+       updated_at = strftime('%s', 'now')
+   `).run(id, sessionId, profile);
+   ```
+
+2. **Get or Create:**
+   ```typescript
+   function getOrCreateConversation(sessionId: string) {
+     let conversation = db.prepare('SELECT * FROM conversations WHERE session_id = ?')
+       .get(sessionId);
+     
+     if (!conversation) {
+       const info = db.prepare('INSERT INTO conversations (id, session_id) VALUES (?, ?)')
+         .run(generateId(), sessionId);
+       conversation = db.prepare('SELECT * FROM conversations WHERE id = ?')
+         .get(info.lastInsertRowid);
+     }
+     
+     return conversation;
+   }
+   ```
+
+3. **Soft Delete:**
+   ```sql
+   -- Add deleted_at column
+   ALTER TABLE bookings ADD COLUMN deleted_at INTEGER DEFAULT NULL;
+   
+   -- Soft delete
+   UPDATE bookings SET deleted_at = strftime('%s', 'now') WHERE id = ?;
+   
+   -- Query non-deleted
+   SELECT * FROM bookings WHERE deleted_at IS NULL;
+   ```
+
+## Testing
+
+1. **Use in-memory database for tests:**
+   ```typescript
+   // test.ts
+   const testDb = new Database(':memory:');
+   // Run migrations on testDb
+   // Run tests
+   testDb.close();
+   ```
+
+2. **Reset database state between tests:**
+   ```typescript
+   beforeEach(() => {
+     db.prepare('DELETE FROM conversations').run();
+     db.prepare('DELETE FROM messages').run();
+   });
+   ```
+
+## Common Pitfalls to Avoid
+
+❌ **Don't use async/await with better-sqlite3** (it's synchronous)
+```typescript
+// Bad
+const result = await db.prepare('SELECT * FROM users').all();
+
+// Good
+const result = db.prepare('SELECT * FROM users').all();
+```
+
+❌ **Don't forget to enable foreign keys** (disabled by default)
+```typescript
+db.pragma('foreign_keys = ON');
+```
+
+❌ **Don't store dates as strings without a format**
+```typescript
+// Bad
+created_at: new Date().toString() // "Fri Oct 03 2025..."
+
+// Good
+created_at: new Date().toISOString() // "2025-10-03T12:00:00.000Z"
+// or
+created_at: Math.floor(Date.now() / 1000) // Unix timestamp
+```
+
+❌ **Don't use `SELECT *` in production code**
+```typescript
+// Bad
+const users = db.prepare('SELECT * FROM users').all();
+
+// Good
+const users = db.prepare('SELECT id, name, email FROM users').all();
+```
+
+## References
+
+- [Better-SQLite3 Documentation](https://github.com/WiseLibs/better-sqlite3)
+- [SQLite Official Docs](https://www.sqlite.org/docs.html)
+- [SQLite Pragma Statements](https://www.sqlite.org/pragma.html)
