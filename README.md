@@ -1,4 +1,4 @@
-# 🚀 Intelligent Booking Assistant - MVP
+# 🚀 Intelligent Booking Assistant
 
 AI-powered travel booking system with conversational interface and personalized recommendations.
 
@@ -14,11 +14,21 @@ AI-powered travel booking system with conversational interface and personalized 
 
 ## 🎯 Tech Stack
 
-- **Frontend**: Next.js 14 + TypeScript + TailwindCSS
+- **Frontend**: Next.js 15 + React 19 + TypeScript + TailwindCSS
 - **Backend**: Next.js API Routes
 - **Database**: SQLite with better-sqlite3
 - **AI**: OpenAI GPT-5 (Responses API)
 - **Styling**: TailwindCSS with custom gradients
+
+### Key Dependencies
+- **OpenAI SDK** `^4.73.0` - GPT-5 Responses API integration
+- **better-sqlite3** `^11.7.0` - Fast, synchronous SQLite database
+- **React** `^19.0.0` - Latest React version
+- **Next.js** `^15.0.3` - React framework with App Router
+- **iron-session** `^8.0.3` - Secure session management
+- **react-markdown** `^9.0.1` - Markdown rendering for AI responses
+- **lucide-react** `^0.469.0` - Modern icon library
+- **Zod** `^3.23.8` - TypeScript-first schema validation
 
 ## 🚀 Quick Start
 
@@ -155,23 +165,62 @@ sqlite3 data/database.db
 node-booking-system/
 ├── data/
 │   ├── database.db          ← SQLite database (enhanced)
-│   └── backups/             ← Automatic backups
+│   ├── database.db-shm      ← Shared memory file
+│   ├── database.db-wal      ← Write-ahead log
+│   ├── backups/             ← Automatic database backups
+│   ├── raw/                 ← Raw data files
+│   ├── destinations.json    ← Destination data
+│   ├── attractions.json     ← Attraction data
+│   ├── activities.json      ← Activity data
+│   ├── packages.json        ← Package data
+│   └── restaurants.json     ← Restaurant data
+├── docs/                    ← Comprehensive documentation
+│   ├── 00-README-START-HERE.md
+│   ├── DATA-MAPPING-ANALYSIS.md
+│   ├── DYNAMIC-SUGGESTIONS.md
+│   ├── gpt5-documentation.md
+│   ├── PRD-Intelligent-Booking-Assistant.md
+│   ├── RESPONSE-FORMATTING-GUIDE.md
+│   ├── SYSTEM-ARCHITECTURE.md       ← Technical architecture & diagrams
+│   ├── TECHNICAL-ARCHITECTURE-SQLITE.md
+│   └── USER-FLOW.md                  ← User journey & process flow
+├── scripts/
+│   ├── 001_add_milestone_fields.sql
+│   ├── 002_populate_interest_scores.sql
+│   └── run-migrations.sh    ← Database migration script
 ├── src/
 │   ├── app/
 │   │   ├── api/
-│   │   │   ├── session/     ← Session management
-│   │   │   ├── chat/        ← GPT-5 chat endpoint
-│   │   │   ├── suggestions/ ← AI-generated contextual suggestions
-│   │   │   └── recommendations/
-│   │   ├── page.tsx         ← Modern chat UI
-│   │   └── globals.css
+│   │   │   ├── chat/
+│   │   │   │   └── route.ts        ← GPT-5 chat endpoint
+│   │   │   ├── recommendations/
+│   │   │   │   └── route.ts        ← Destination recommendations
+│   │   │   ├── session/
+│   │   │   │   └── route.ts        ← Session management
+│   │   │   └── suggestions/
+│   │   │       └── route.ts        ← AI-generated suggestions
+│   │   ├── page.tsx                ← Modern chat UI
+│   │   ├── layout.tsx              ← App layout
+│   │   └── globals.css             ← Global styles
 │   ├── lib/
-│   │   ├── db.ts            ← Database connection
-│   │   ├── conversation/    ← State management
-│   │   └── agents/          ← Business logic
+│   │   ├── db.ts                   ← Database connection
+│   │   ├── agents/
+│   │   │   ├── profile-agent.ts    ← Profile extraction logic
+│   │   │   └── recommendation-agent.ts
+│   │   └── conversation/
+│   │       ├── state.ts            ← Conversation state
+│   │       └── messages.ts         ← Message handling
 │   └── types/
-│       └── index.ts         ← TypeScript types
-└── docs/                    ← Comprehensive documentation
+│       └── index.ts                ← TypeScript types
+├── .gitignore                      ← Git ignore rules
+├── package.json
+├── package-lock.json
+├── tsconfig.json                   ← TypeScript config
+├── tailwind.config.ts              ← TailwindCSS config
+├── next.config.js                  ← Next.js config
+├── postcss.config.js
+├── env.example                     ← Example environment variables
+└── README.md
 ```
 
 ## 🧪 Testing the Application
@@ -435,7 +484,7 @@ Add environment variables in Vercel dashboard.
 - **Debugging**: Check browser console for API responses and state changes
 - **GPT-5 Prompts**: System prompts enforce concise, markdown-formatted responses
 
-## 📞 Support
+## Support
 
 Issues? Check:
 1. `.env.local` file exists with valid API key
@@ -444,10 +493,3 @@ Issues? Check:
 4. OpenAI API key has GPT-5 access
 
 ---
-
-**Built with ❤️ using Next.js 14, GPT-5, TailwindCSS, and SQLite**
-
-✨ **MVP Status**: Production-ready with beautiful UI and complete 4-section booking flow
-
-*Last updated: October 3, 2025 - v1.0 (MVP Complete)*
-
